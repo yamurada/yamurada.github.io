@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#15110e">
+<title>YAMURADA 予約カレンダー</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="calendar.css?v=1123a">
+</head>
+<body>
+<main id="app" aria-live="polite">
+  <p class="msg">読み込み中…</p>
+</main>
+<div id="toast" role="status" aria-live="polite"></div>
+<noscript><p class="msg">このページは、JavaScript を使います。LINEのアプリから開いてください。</p></noscript>
+
+<!-- LINE公式のSDK（LIFF）。ここで「LINEログイン」を行い、オーナーかどうかをGASが確かめる -->
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="calendar-config.js?v=1123a"></script>
+<script src="calendar.js?v=1123a"></script>
+</body>
+</html>
