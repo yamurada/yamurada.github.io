@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>多国籍酒場YAMURADA｜小山のタイ・ベトナム・フィリピン料理と酒場</title>
+<meta name="description" content="栃木県小山市の多国籍酒場YAMURADA。タイ・ベトナム・フィリピンなど東南アジアの料理とアジアのお酒を、18時から朝4時まで。小山駅から徒歩12分。">
+<meta property="og:title" content="多国籍酒場YAMURADA">
+<meta property="og:description" content="東南アジアの料理とお酒を、小山で朝4時まで。">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://yamurada.github.io/">
+<meta property="og:image" content="https://yamurada.github.io/images/sawara.jpg">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#15110e">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=1121c">
+<script>document.documentElement.classList.add('js')</script>
+</head>
+<body>
+
+<header class="site-header">
+  <a class="logo" href="#top" aria-label="ページの先頭へ">YAMURADA</a>
+  <nav class="nav" aria-label="ページ内の目次">
+    <a href="#picks">おすすめ</a>
+    <a href="#menu">メニュー</a>
+    <a href="#course">宴会</a>
+    <a href="#gallery">写真</a>
+    <a href="#about">お店</a>
+    <a href="#info">アクセス</a>
+  </nav>
+</header>
+
+<main id="top">
+  <section class="hero" aria-label="トップ">
+    <div class="hero-slides" id="heroSlides"></div>
+    <div class="hero-text">
+      <p class="hero-kicker" data-shop="catch"></p>
+      <h1><span>多国籍酒場</span>YAMURADA</h1>
+      <p class="hero-sub"><span class="ph" data-shop="access"></span>　<span class="ph" data-shop="hours"></span></p>
+      <div class="hero-btns">
+        <a class="btn" data-tel>電話する</a>
+        <a class="btn" href="#info"><span class="ph">営業時間・</span><span class="ph">アクセス</span></a>
+      </div>
+    </div>
+  </section>
+
+  <section id="picks" class="sec">
+    <div class="board reveal">
+      <h2>おすすめ</h2>
+      <p class="lead"><span class="ph">タイ・ベトナム・</span><span class="ph">フィリピンなど、</span><span class="ph">東南アジアの味を</span><span class="ph">1軒で。</span></p>
+      <div class="picks" id="picksList"></div>
+    </div>
+  </section>
+
+  <section id="menu" class="sec">
+    <div class="board reveal">
+      <h2>メニュー <span class="badge" id="menuBadge" hidden>仮</span></h2>
+      <p class="lead" id="menuLead">一部をのせています。</p>
+      <div id="menuList"></div>
+      <p class="note" id="menuNotes"></p>
+      <span class="board-mark">YAMURADA</span>
+    </div>
+  </section>
+
+  <section id="course" class="sec">
+    <div class="board reveal" id="courseBox"></div>
+  </section>
+
+  <section id="gallery" class="sec">
+    <h2 class="sec-title reveal">写真</h2>
+    <div class="photos reveal" id="photoList"></div>
+  </section>
+
+  <section id="insta" class="sec">
+    <div class="board reveal">
+      <h2>Instagram</h2>
+      <p class="lead"><span class="ph">新しいメニューや</span><span class="ph">お休みの日を</span><span class="ph">お知らせしています。</span></p>
+      <div class="insta-grid" id="instaList" hidden></div>
+      <p class="more"><a class="btn" data-insta target="_blank" rel="noopener">Instagramを見る</a></p>
+    </div>
+  </section>
+
+  <section id="about" class="sec">
+    <div class="board reveal">
+      <h2>お店について</h2>
+      <figure class="spot-photo owner-photo" id="aboutPhoto" hidden></figure>
+      <div id="aboutText"></div>
+    </div>
+  </section>
+
+  <section id="reviews" class="sec">
+    <div class="board reveal" id="reviewBox"></div>
+  </section>
+
+  <section id="info" class="sec">
+    <div class="board reveal">
+      <h2><span class="ph">営業時間・</span><span class="ph">アクセス</span></h2>
+      <dl class="info">
+        <dt>営業時間</dt><dd data-shop="hours"></dd>
+        <dt>定休日</dt><dd><span data-shop="holiday"></span><br><span id="holidayLine"></span></dd>
+        <dt>住所</dt><dd data-shop="address"></dd>
+        <dt>アクセス</dt><dd data-shop="access"></dd>
+        <dt>駐車場</dt><dd data-shop="parking"></dd>
+        <dt>席</dt><dd data-shop="seats"></dd>
+        <dt>支払い</dt><dd data-shop="payment"></dd>
+        <dt>電話</dt><dd><a data-tel data-shop="tel"></a></dd>
+      </dl>
+      <figure class="spot-photo outside-photo" id="outsidePhoto" hidden></figure>
+      <div class="map" id="mapBox"></div>
+      <p class="more"><a data-map target="_blank" rel="noopener">Googleマップで開く</a></p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <p class="footer-logo">YAMURADA</p>
+  <p><a data-insta target="_blank" rel="noopener">Instagram</a></p>
+  <p class="copy">© <span id="year"></span> <span data-shop="name"></span></p>
+</footer>
+
+<!-- スマホの画面の下にずっと出るボタン -->
+<nav class="bottom-bar" aria-label="すぐ使うボタン">
+  <a data-tel><span class="ico" aria-hidden="true">📞</span>電話</a>
+  <a data-map target="_blank" rel="noopener"><span class="ico" aria-hidden="true">📍</span>地図</a>
+  <a data-insta target="_blank" rel="noopener"><span class="ico" aria-hidden="true">📷</span>Instagram</a>
+</nav>
+
+<script src="shop-data.js?v=1121c"></script>
+<script src="main.js?v=1121c"></script>
+</body>
+</html>
