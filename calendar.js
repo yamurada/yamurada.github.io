@@ -11,11 +11,12 @@
   var DEMO = !CFG.liffId && /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && /[?&]demo=1/.test(location.search);
 
   var WEEK = '日月火水木金土';
-  var SEAT = { counter: 'カウンター', table: 'テーブル' };
+  var SEAT = { counter: 'カウンター（厨房の前）', wall: 'カウンター（壁向き）', table: 'テーブル', multi: '席つなぎ（貸切）' };
+  var SEAT_PICK = { counter: SEAT.counter, wall: SEAT.wall, table: SEAT.table }; // 予約の追加で選べる席（「席つなぎ」は、別のボタンで）
   var TYPE = { seat: '席のみ', banquet: '宴会' };
   var SRC = { web: 'ネット', tel: '電話', sns: 'LINE・SNS', walk: '来店' };
   var FIRST_H = 18, LAST_H = 25;             // GASから教われなかったときだけ使う（ふだんは cal_month の返事の hours を使う）
-  var MAX_PEOPLE = { counter: 6, table: 15 }; // 同上（max）。本当の確認は、GASがする
+  var MAX_PEOPLE = { counter: 6, wall: 4, table: 11, multi: 25 }; // 同上（max）。本当の確認は、GASがする
 
   var ERR = {
     auth: 'ログインの確認ができませんでした。いったんページを閉じて、LINEのメニューから開き直してください。',
@@ -32,6 +33,9 @@
     big: 'この日の予約が多すぎて、保存できませんでした。',
     many: 'お休みの日が多すぎます。',
     nf: 'その予約は、すでに消えています。',
+    nfvisit: '14時の掃除で、記録に入りました。画面からは直せません。直すときは、制作者に連絡してください。',
+    past: '過ぎた日の予約は、キャンセルできません。（来店の記録の元になるため）',
+    visited: '来店（か「来なかった」）を記録ずみの予約です。キャンセルするときは、先に「未入力に戻す」を押してください。',
     error: 'うまくいきませんでした。もう一度ためしてください。'
   };
 
@@ -61,18 +65,74 @@
   function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
   function show(nodes) { clear(app); nodes.forEach(function (n) { if (n) app.appendChild(n); }); window.scrollTo(0, 0); }
 
+  // 名前を消した予約（記録に書けなかった日の分）は、そう表示する
+  function nameOf(b) { return b.name ? b.name + ' 様' : '（名前は消しました）'; }
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
   function parts(ymd) { var p = ymd.split('-'); return { y: +p[0], m: +p[1], d: +p[2] }; }
   function dow(ymd) { var p = parts(ymd); return new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay(); }
   function dateLabel(ymd) { var p = parts(ymd); return p.m + '/' + p.d + '(' + WEEK.charAt(dow(ymd)) + ')'; }
-  function hourLabel(h) { return h >= 24 ? '深夜' + (h - 24) + ':00（' + h + ':00）' : h + ':00'; }
+  // 時間の文字（19.25 → 19:15、25.5 → 深夜1:30（25:30））。開始は15分きざみ
+  function hourLabel(h) {
+    var hh = Math.floor(h + 1e-9), m = Math.round((h - hh) * 60), m2 = (m < 10 ? '0' : '') + m;
+    return h >= 24 ? '深夜' + (hh - 24) + ':' + m2 + '（' + hh + ':' + m2 + '）' : hh + ':' + m2;
+  }
   function telLabel(t) {
     t = String(t || '');
     if (t.length === 11) return t.slice(0, 3) + '-' + t.slice(3, 7) + '-' + t.slice(7);
     if (t.length === 10) return t.slice(0, 2) + '-' + t.slice(2, 6) + '-' + t.slice(6);
     return t;
   }
-  function tableLabel(i) { return 'ABCDEFGHIJ'.charAt(i) || String(i + 1); }
+  function tableLabel(i) {
+    var n = state.monthData && state.monthData.tables && state.monthData.tables[i]; // 卓の大きさは、GASが教える
+    return ('ABCDEFGHIJ'.charAt(i) || String(i + 1)) + (n ? '（' + n + '人がけ）' : '');
+  }
+
+  /* ---------- 席の図（席をつなぐ） ---------- */
+
+  function stayH() { return (state.monthData && state.monthData.stayHours) || 2; } // 1回の長さ（時間）。GASが教える（貸切の時間は、あとで変わるかもしれない）
+  var ZONE_NAME = { counter: 'カウンター（厨房の前）', wall: 'カウンター（壁向き）' };
+  function unitName(u) { return u.charAt(0) === 't' ? 'テーブル' + tableLabel(parseInt(u.slice(1), 10)) : (ZONE_NAME[u] || u); }
+  function unitsOf(b) { return (b.tb || []).map(function (i) { return 't' + i; }).concat(b.zn || []); }
+  function unitSeats(u) {
+    var md = state.monthData || {};
+    if (u.charAt(0) === 't') return ((md.tables || [3, 2, 6])[parseInt(u.slice(1), 10)]) || 0;
+    return ((md.zones || { counter: 6, wall: 4 })[u]) || 0;
+  }
+  // ある時間に、どの席が使われているか（GASの数え方と同じ。重なるのは、開始が2時間未満はなれているものの予約）
+  function usage(list, h) {
+    var u = { t: {}, z: { counter: 0, wall: 0 }, blocked: false };
+    (list || []).forEach(function (b) {
+      if (Math.abs(b.h - h) >= stayH()) return;
+      if (b.seat === 'table' || b.seat === 'multi') { (b.tb || []).forEach(function (i) { u.t[i] = b.no; }); if (b.ov) u.blocked = true; }
+      if (b.seat === 'counter' || b.seat === 'wall') u.z[b.seat] += b.people;
+      if (b.seat === 'multi') (b.zn || []).forEach(function (z) { u.z[z] += 99; });
+    });
+    return u;
+  }
+  // 席の図（下が入口）。右＝テーブル（奥から A・B・C。入口に近いのが C）／左の奥＝厨房の前カウンター／左の手前＝壁向きカウンター
+  // sel＝選んでいる席 {id:true}、use＝使われている席（usage の結果。なければ null）、onToggle＝押したときの動き（なければ、見るだけ）
+  function seatMap(sel, use, onToggle) {
+    var md = state.monthData || {}, nT = (md.tables || [3, 2, 6]).length;
+    var wrap = el('div', { class: 'seatmap', role: 'group', 'aria-label': '席の図' });
+    function tile(id, area) {
+      var on = !!sel[id], busy = false;
+      if (use) busy = id.charAt(0) === 't' ? (!!use.t[id.slice(1)] || use.blocked) : use.z[id] > 0;
+      var idx = id.charAt(0) === 't' ? parseInt(id.slice(1), 10) : -1;
+      var down = on && idx >= 0 && idx + 1 < nT && sel['t' + (idx + 1)];
+      var label = id.charAt(0) === 't' ? 'テーブル' + 'ABCDEFGHIJ'.charAt(idx) : ZONE_NAME[id];
+      var state_ = on ? (onToggle ? 'つながっている' : 'この予約') : (busy ? '使用中' : (onToggle ? '空き' : ''));
+      var attrs = { class: 'tile ' + area + (on ? ' on' : '') + (busy ? ' busy' : '') + (down ? ' link-down' : '') };
+      if (onToggle) { attrs.type = 'button'; attrs['aria-pressed'] = on ? 'true' : 'false'; attrs.onclick = function () { onToggle(id); }; }
+      var node = el(onToggle ? 'button' : 'div', attrs, el('span', { class: 'tn', text: id.charAt(0) === 't' ? label : 'カウンター' }), el('span', { class: 'ts', text: (id === 'counter' ? '厨房の前・' : id === 'wall' ? '壁向き・' : '') + unitSeats(id) + '席' }), el('span', { class: 'tst', text: state_ }));
+      return node;
+    }
+    for (var i = 0; i < nT; i++) wrap.appendChild(tile('t' + i, 'ta' + i));
+    wrap.appendChild(tile('wall', 'twall'));
+    wrap.appendChild(tile('counter', 'tcounter'));
+    wrap.appendChild(el('div', { class: 'maplabel mback', text: '奥' }));
+    wrap.appendChild(el('div', { class: 'maplabel mdoor', text: '入口' }));
+    return wrap;
+  }
 
   function toast(msg, isErr) {
     toastEl.textContent = msg;
@@ -198,8 +258,13 @@
         el('button', { class: 'plain', type: 'button', 'aria-label': '次の月', text: '▶', disabled: state.month >= lastYm ? 'disabled' : false, onclick: function () { state.month = nextYm; renderMonth(); } })),
       grid,
       el('p', { class: 'legend', text: '数字は、予約の件数です。「休」は、お休みに設定した日です。日を押すと、その日の予約が見られます。' }),
+      // 昨日のネット予約が残っているあいだ（14時まで）は、来店ボタンを押せる。未入力があるときは、目立たせる
+      d.yest && d.yest.n ? el('div', { class: 'row' },
+        el('button', { class: d.yest.pend ? 'primary' : 'plain', type: 'button',
+          text: '昨日（' + dateLabel(d.yest.date) + '）の来店を確認する　' + (d.yest.pend ? '未入力 ' + d.yest.pend + '件' : '入力ずみ'),
+          onclick: function () { openDay(d.yest.date); } })) : null,
       el('div', { class: 'row' },
-        el('button', { class: 'primary', type: 'button', text: '今日の予約を見る', onclick: function () { openDay(d.today); } }),
+        el('button', { class: d.yest && d.yest.pend ? 'plain' : 'primary', type: 'button', text: '今日の予約を見る', onclick: function () { openDay(d.today); } }),
         el('button', { class: 'plain', type: 'button', text: '最新にする', onclick: function () { loadMonth(true); } }))
     ]);
     state.view = 'month';
@@ -220,16 +285,24 @@
 
   function renderDay() {
     var r = state.dayData, date = r.date, total = 0;
-    r.list.forEach(function (b) { total += b.people; });
+    var past = !!(state.monthData && date < state.monthData.today); // 昨日の営業日：来店ボタンだけ。予約の追加・お休みの変更はできない
+    var webN = 0, came = 0, pend = 0;
+    r.list.forEach(function (b) {
+      total += b.people;
+      if (b.src === 'web') { webN++; if (b.vp) came += b.vp; else if (!b.nv) pend++; }
+    });
 
     var cards = r.list.map(function (b) {
       var chips = el('div', { class: 'chips' }, el('span', { class: 'chip', text: SRC[b.src] || SRC.web }),
+        b.src === 'web' && r.canVisit ? visitChip(b) : null,
         b.note ? el('span', { class: 'chip note', text: '★ご要望あり' }) : null,
-        b.ov ? el('span', { class: 'chip over', text: '満席をこえて入れた' }) : null);
+        b.ov ? el('span', { class: 'chip over', text: '満席をこえて入れた' }) : null,
+        b.cf ? el('span', { class: 'chip over', text: '入れたとき席が重なっていた' }) : null);
       return el('button', { class: 'card', type: 'button', onclick: function () { state.sel = b.no; renderDetail(); } },
         el('div', { class: 't', text: hourLabel(b.h) + '　（番号' + b.no + '）' }),
-        el('div', { class: 'who', text: b.name + ' 様' }),
+        el('div', { class: 'who', text: nameOf(b) }),
         el('div', { class: 'meta', text: b.people + '名　' + SEAT[b.seat] + '（' + TYPE[b.type] + '）' }),
+        b.seat === 'multi' ? el('div', { class: 'meta', text: unitsOf(b).map(unitName).join('・') }) : null,
         chips);
     });
 
@@ -238,13 +311,21 @@
       el('h1', { text: dateLabel(date) }),
       r.closed ? el('div', { class: 'banner closed', role: 'status', text: 'この日は、お休みに設定しています。（ネット予約は受けません）' }) : null,
       el('p', { class: 'sum', text: r.list.length ? r.list.length + '件・合計' + total + '名' : '予約は、ありません。' }),
-      el('div', { class: 'row' },
+      r.canVisit && webN ? el('p', { class: 'sum', text: 'ネット予約の来店：' + came + '名' + (pend ? '　（未入力 ' + pend + '件）' : '') }) : null,
+      past ? el('p', { class: 'hint', text: '昨日の分です。ネット予約の「来店」か「来なかった」を押してください（14時までです）。' }) : el('div', { class: 'row' },
         el('button', { class: 'primary', type: 'button', text: '＋ 予約を追加', onclick: function () { renderForm(date); } }),
         el('button', { class: r.closed ? 'plain' : 'danger', type: 'button', text: r.closed ? 'お休みを解除する' : 'この日は休み', onclick: function () { toggleClosed(date, !r.closed); } })),
       r.list.length ? el('div', null, cards) : el('p', { class: 'empty', text: 'この日の予約は、まだありません。' }),
       el('div', { class: 'row' }, el('button', { class: 'plain', type: 'button', text: '最新にする', onclick: function () { openDay(date); } }))
     ]);
     state.view = 'day';
+  }
+
+  // 来店ボタンの状態の小さな札（ネット予約だけ）
+  function visitChip(b) {
+    return b.vp ? el('span', { class: 'chip ok', text: '来店 ' + b.vp + '名' })
+      : b.nv ? el('span', { class: 'chip', text: '来なかった' })
+      : el('span', { class: 'chip over', text: '来店 未入力' });
   }
 
   function toggleClosed(date, toClosed) {
@@ -273,6 +354,7 @@
     return null;
   }
 
+  function selOf(b) { var o = {}; unitsOf(b).forEach(function (u) { o[u] = true; }); return o; }
   function item(label, valueNode, cls) { return el('div', { class: 'it' }, el('dt', { text: label }), el('dd', { class: cls || '' }, valueNode)); }
 
   function renderDetail() {
@@ -284,23 +366,67 @@
       el('button', { class: 'link back', type: 'button', text: '← ' + dateLabel(date) + 'に戻る', onclick: renderDay }),
       el('h1', { text: dateLabel(date) + ' ' + hourLabel(b.h) }),
       el('div', { class: 'detail' }, el('dl', null,
-        item('お名前', b.name + ' 様'),
+        item('お名前', nameOf(b)),
         item('電話番号', tel),
-        item('人数・席', b.people + '名　' + SEAT[b.seat] + (tb ? '（卓 ' + tb + '）' : '')),
+        item('人数・席', b.people + '名　' + SEAT[b.seat] + (tb && b.seat !== 'multi' ? '（卓 ' + tb + '）' : '')),
+        b.seat === 'multi' ? item('つないだ席', el('div', null, el('div', { text: unitsOf(b).map(unitName).join('・') }), seatMap(selOf(b), null, null))) : null,
         item('ご利用', TYPE[b.type]),
         item('受けた経路', SRC[b.src] || SRC.web),
         item('ご要望・ご質問', b.note || '（なし）', 'note'),
-        b.ov ? item('メモ', '満席をこえて入れた予約です。この予約があるあいだ、その時間（と前後1時間）のテーブルは、ネットでは満席になります。席が空いたら、この予約をキャンセルして、入れ直してください。') : null,
-        item('予約の番号', String(b.no)))),
-      el('div', { class: 'row' },
+        b.ov ? item('メモ', b.seat === 'table'
+          ? '満席をこえて入れた予約です。この予約があるあいだ、その時間（と、開始が2時間未満はなれている時間）のテーブルは、ネットでは満席になります。席が空いたら、この予約をキャンセルして、入れ直してください。'
+          : '満席をこえて入れた予約です。この席は、人数で数えているので、この予約のぶんも埋まった扱いになります。') : null,
+        b.cf ? item('メモ', '入れたときに、同じ席を使う予約がほかにあった（席が重なっていた）予約です。ほかの予約をキャンセルしたあとは、重なっていないこともあります。席の割り当てを、お店で確かめてください。') : null,
+        item('予約の番号', String(b.no)),
+        b.src === 'web' && state.dayData.canVisit ? item('来店の記録', b.vp ? '来店 ' + b.vp + '名' : b.nv ? '来なかった' : '未入力') : null)),
+      b.src === 'web' && state.dayData.canVisit ? visitBox(b) : null,
+      // 昨日の営業日の予約は、キャンセルできない（来店の記録の元になるため）
+      state.monthData && date < state.monthData.today ? null : el('div', { class: 'row' },
         el('button', { class: 'danger', type: 'button', text: 'この予約をキャンセルする', onclick: function () { cancelBooking(b); } }))
     ]);
     state.view = 'detail';
   }
 
+  // 来店ボタン（ネット予約だけ）。人数は、予約の人数が入っている。少ない・多いときは、直してから押す
+  function visitBox(b) {
+    var inp = el('input', { type: 'number', id: 'v-people', inputmode: 'numeric', min: '1', max: '50', value: String(b.vp || b.people) });
+    return el('div', { class: 'visit' },
+      el('div', { class: 'f' }, el('label', { for: 'v-people', text: '来店した人数' }), inp,
+        el('div', { class: 'hint', text: '月の来店人数の数え方に使います。予約と人数がちがうときは、直してください。' })),
+      el('div', { class: 'row' },
+        el('button', { class: 'primary', type: 'button', text: '来店を記録する', onclick: function () { sendVisit(b, 'came', inp.value); } }),
+        el('button', { class: 'plain', type: 'button', text: '来なかった', onclick: function () { sendVisit(b, 'no', 0); } }),
+        b.vp || b.nv ? el('button', { class: 'plain', type: 'button', text: '未入力に戻す', onclick: function () { sendVisit(b, 'clear', 0); } }) : null));
+  }
+
+  function sendVisit(b, v, people) {
+    var n = parseInt(people, 10) || 0;
+    if (v === 'came' && !(n >= 1 && n <= 50)) { toast(ERR.people, true); return; }
+    // 予約の人数の2倍をこえるときは、打ち間違いかもしれないので、一度確かめる
+    if (v === 'came' && n > b.people * 2) {
+      confirmBox('予約は ' + b.people + '名ですが、' + n + '名で記録します。\nまちがいありませんか？', 'この人数で記録', '直す', false).then(function (yes) { if (yes) doVisit(b, v, n); });
+      return;
+    }
+    doVisit(b, v, n);
+  }
+
+  function doVisit(b, v, n) {
+    var date = state.date;
+    setBusy(true);
+    api('cal_visit', { date: date, no: b.no, v: v, people: n }).then(function (r) {
+      setBusy(false);
+      if (!r.ok) { toast(r.reason === 'nf' ? ERR.nfvisit : (ERR[r.reason] || ERR.error), true); if (r.reason === 'nf') openDay(date); return; }
+      toast(v === 'came' ? '来店を記録しました（' + r.vp + '名）' : v === 'no' ? '「来なかった」にしました' : '未入力に戻しました');
+      // 最新の一覧を読み直して、この予約の画面に戻る
+      api('cal_day', { date: date }).then(function (d) {
+        if (d.ok) { state.dayData = d; renderDetail(); } else openDay(date);
+      });
+    });
+  }
+
   function cancelBooking(b) {
     var date = state.date;
-    confirmBox(dateLabel(date) + ' ' + hourLabel(b.h) + '\n' + b.name + ' 様　' + b.people + '名\n\nこの予約を消しますか？\n（消すと、元には戻せません。お客さまには、LINEでは知らせません）', 'はい、消す', 'いいえ', true).then(function (yes) {
+    confirmBox(dateLabel(date) + ' ' + hourLabel(b.h) + '\n' + nameOf(b) + '　' + b.people + '名\n\nこの予約を消しますか？\n（消すと、元には戻せません。お客さまには、LINEでは知らせません）', 'はい、消す', 'いいえ', true).then(function (yes) {
       if (!yes) return;
       setBusy(true);
       api('cal_cancel', { date: date, no: b.no }).then(function (r) {
@@ -332,7 +458,8 @@
     var dateIn = el('input', { type: 'date', id: 'f-date', required: 'required', value: date, min: state.monthData.today, max: state.monthData.last });
     var timeSel = el('select', { id: 'f-h' });
     var hrs = state.monthData.hours || { first: FIRST_H, last: LAST_H };
-    for (var h = hrs.first; h <= hrs.last; h++) timeSel.appendChild(el('option', { value: String(h), text: hourLabel(h) }));
+    var stepH = hrs.step || 1; // GASが古くて刻みを教えないときは、1時間（古いGASは15分を読めない）
+    for (var h = hrs.first; h <= hrs.last + 1e-9; h += stepH) timeSel.appendChild(el('option', { value: String(h), text: hourLabel(h) }));
     timeSel.value = (hrs.first <= 20 && 20 <= hrs.last) ? '20' : String(hrs.first);
     var people = el('input', { type: 'number', id: 'f-people', inputmode: 'numeric', min: '1', max: String((state.monthData.max || MAX_PEOPLE).table), value: '2' });
     var name = el('input', { type: 'text', id: 'f-name', maxlength: '30', autocomplete: 'off', placeholder: '例）山田 太郎' });
@@ -345,7 +472,51 @@
 
     form.appendChild(field('日付', dateIn, '今日から60日先まで。当日もOKです。', 'f-date'));
     form.appendChild(field('開始の時間', timeSel, '1回2時間で数えます。', 'f-h'));
-    form.appendChild(el('div', { class: 'f' }, el('div', { class: 'lab', text: '席' }), seg('seat', SEAT, 'table')));
+    // 席をつなぐ（大人数・貸切）：席の図をタップして選ぶ。選んだ席は、その時間、ネットでは満席になる
+    var maxes = state.monthData.max || MAX_PEOPLE;
+    var linkOn = false, selUnits = {};
+    var occ = (state.dayData && state.dayData.date === date) ? state.dayData.list : []; // その日の予約（使われている席を、図に出すため）
+    var occFail = false; // その日の予約を読めなかったとき（図は「空き」に見えるので、知らせる）
+    var seatRow = el('div', { class: 'f' }, el('div', { class: 'lab', text: '席' }), seg('seat', SEAT_PICK, 'table'));
+    var mapBox = el('div', { class: 'mapbox' });
+    var mapSum = el('div', { class: 'mapsum', role: 'status' });
+    var linkBtn = el('button', { class: 'plain linkbtn', type: 'button', 'aria-pressed': 'false', text: '席をつなぐ（大人数・貸切）' });
+    mapBox.hidden = true; mapSum.hidden = true;
+    function drawMap() {
+      clear(mapBox); clear(mapSum);
+      var use = usage(occ, Number(timeSel.value));
+      mapBox.appendChild(seatMap(selUnits, use, function (id) { if (selUnits[id]) delete selUnits[id]; else selUnits[id] = true; drawMap(); }));
+      var ids = Object.keys(selUnits).sort(), seats = 0, pp = parseInt(people.value, 10) || 0, busy = false;
+      ids.forEach(function (u) { seats += unitSeats(u); if (u.charAt(0) === 't' ? (use.t[u.slice(1)] || use.blocked) : use.z[u] > 0) busy = true; });
+      mapSum.className = 'mapsum' + (ids.length && (seats < pp || busy) ? ' warn' : '');
+      if (!ids.length) { mapSum.appendChild(el('div', { text: '使う席をタップすると、つながります。（もう一度タップすると、外れます）' })); if (occFail) mapSum.appendChild(el('div', { text: 'この日の予約を読めませんでした。（使われている席は、送ったときに確かめます）' })); return; }
+      mapSum.appendChild(el('div', { text: 'つないだ席：' + ids.map(unitName).join('・') }));
+      mapSum.appendChild(el('div', { text: '合計 ' + seats + '席　／　予約 ' + pp + '名' }));
+      if (seats < pp) mapSum.appendChild(el('div', { text: '席が足りません。' }));
+      if (busy) mapSum.appendChild(el('div', { text: 'この時間に、使われている席が入っています。' }));
+      if (occFail) mapSum.appendChild(el('div', { text: 'この日の予約を読めませんでした。（使われている席は、送ったときに確かめます）' }));
+    }
+    linkBtn.addEventListener('click', function () {
+      linkOn = !linkOn;
+      seatRow.hidden = linkOn; mapBox.hidden = !linkOn; mapSum.hidden = !linkOn;
+      linkBtn.setAttribute('aria-pressed', linkOn ? 'true' : 'false');
+      linkBtn.textContent = linkOn ? '席をつなぐのをやめる' : '席をつなぐ（大人数・貸切）';
+      people.max = String(linkOn ? maxes.multi : maxes.table);
+      if (linkOn) drawMap();
+    });
+    timeSel.addEventListener('change', function () { if (linkOn) drawMap(); });
+    people.addEventListener('input', function () { if (linkOn) drawMap(); });
+    dateIn.addEventListener('change', function () {
+      var d = dateIn.value;
+      if (!d) return;
+      if (state.dayData && state.dayData.date === d) { occ = state.dayData.list; if (linkOn) drawMap(); return; }
+      occ = []; occFail = false; if (linkOn) drawMap();
+      api('cal_day', { date: d }).then(function (r) { if (dateIn.value !== d) return; occ = r && r.ok ? r.list : []; occFail = !(r && r.ok); if (linkOn) drawMap(); });
+    });
+    form.appendChild(seatRow);
+    form.appendChild(el('div', { class: 'f' }, linkBtn, el('div', { class: 'hint', text: '12名以上や、貸切のときに使います。選んだ席は、その時間、ネットでは満席になります。' })));
+    form.appendChild(mapBox);
+    form.appendChild(mapSum);
     form.appendChild(field('人数', people, null, 'f-people'));
     form.appendChild(el('div', { class: 'f' }, el('div', { class: 'lab', text: 'ご利用' }), seg('type', TYPE, 'seat')));
     form.appendChild(el('div', { class: 'f' }, el('div', { class: 'lab', text: 'どこで受けた予約？' }), seg('src', { tel: SRC.tel, sns: SRC.sns, walk: SRC.walk }, 'tel')));
@@ -358,13 +529,15 @@
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
       err.textContent = '';
-      var p = parseInt(people.value, 10), seatV = segValue(form, 'seat');
+      var p = parseInt(people.value, 10), seatV = linkOn ? 'multi' : segValue(form, 'seat');
       var telV = tel.value.replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 65248); }).replace(/[^0-9]/g, '');
       if (!dateIn.value) { err.textContent = '日付を入れてください。'; dateIn.focus(); return; }
+      if (linkOn && !Object.keys(selUnits).length) { err.textContent = 'つなぐ席を、図からタップして選んでください。'; return; }
       var mx = (state.monthData.max || MAX_PEOPLE)[seatV];
       if (!(p >= 1 && p <= mx)) { err.textContent = SEAT[seatV] + 'は、1〜' + mx + '名で入れてください。'; people.focus(); return; }
       if (telV && !/^0\d{9,10}$/.test(telV)) { err.textContent = ERR.tel; tel.focus(); return; }
-      var body = { date: dateIn.value, h: parseInt(timeSel.value, 10), people: p, seat: seatV, type: segValue(form, 'type'), src: segValue(form, 'src'), name: name.value, tel: telV, note: note.value };
+      var body = { date: dateIn.value, h: Number(timeSel.value), people: p, seat: seatV, type: segValue(form, 'type'), src: segValue(form, 'src'), name: name.value, tel: telV, note: note.value };
+      if (linkOn) body.units = Object.keys(selUnits).sort();
       submit.disabled = true;
       send(body, form, err, submit);
     });
@@ -383,14 +556,18 @@
         state.date = body.date;
         return openDay(body.date);
       }
-      var ask = r.reason === 'closed' ? 'closed' : r.reason === 'full' ? 'full' : '';
+      var ask = r.reason === 'closed' ? 'closed' : r.reason === 'full' ? 'full' : r.reason === 'cap' ? 'cap' : '';
       if (ask) {
         var msg = ask === 'closed'
           ? dateLabel(body.date) + 'は、お休みに設定してある日です。\nそれでも入れますか？'
-          : '満席です。（その時間の席は、もう埋まっています）\nそれでも入れますか？';
+          : ask === 'cap'
+            ? '選んだ席は ' + r.cap + '席ですが、人数は ' + body.people + '名です。\n席が足りませんが、それでも入れますか？'
+            : body.units
+              ? 'この時間に、すでに使われている席が入っています。\nそれでも入れますか？（席が重なります）'
+              : '満席です。（その時間の席は、もう埋まっています）\nそれでも入れますか？';
         confirmBox(msg, 'はい、入れる', 'いいえ', false).then(function (yes) {
           if (!yes) { submit.disabled = false; return; }
-          if (ask === 'closed') body.forceClosed = true; else body.forceFull = true;
+          if (ask === 'closed') body.forceClosed = true; else if (ask === 'cap') body.forceCap = true; else body.forceFull = true;
           send(body, form, err, submit);
         });
         return;
@@ -443,6 +620,15 @@
         { no: 1, h: 19, name: '山田 太郎', tel: '09012345678', people: 4, seat: 'table', type: 'seat', src: 'web', ov: 0, tb: [0], note: '卵アレルギーがあります。誕生日です。' },
         { no: 2, h: 20, name: '佐藤 花子', tel: '09087654321', people: 2, seat: 'counter', type: 'seat', src: 'tel', ov: 0, tb: [], note: '' },
         { no: 3, h: 25, name: '＜script＞alert(1)＜/script＞', tel: '', people: 8, seat: 'table', type: 'banquet', src: 'walk', ov: 1, tb: [], note: '<b>太字になってはいけない</b>' }] };
+      // 来店ボタンを試すための、今日と昨日の分（ネット予約と電話）
+      demo.days[today] = { n: 3, list: [
+        { no: 1, h: 19, name: '田中 一郎', tel: '09011112222', people: 4, seat: 'table', type: 'seat', src: 'web', ov: 0, tb: [0], note: '', vp: 0, nv: 0 },
+        { no: 2, h: 20, name: '高橋 美咲', tel: '09033334444', people: 2, seat: 'counter', type: 'seat', src: 'web', ov: 0, tb: [], note: '', vp: 2, nv: 0 },
+        { no: 3, h: 21, name: '電話 花子', tel: '', people: 2, seat: 'table', type: 'seat', src: 'tel', ov: 0, tb: [], note: '' }] };
+      var yd = new Date(t.getTime() - 86400000), ydy = yd.getUTCFullYear() + '-' + pad2(yd.getUTCMonth() + 1) + '-' + pad2(yd.getUTCDate());
+      demo.yest = ydy;
+      demo.days[ydy] = { n: 1, list: [
+        { no: 1, h: 20, name: '伊藤 健', tel: '09055556666', people: 3, seat: 'table', type: 'seat', src: 'web', ov: 0, tb: [0], note: '', vp: 0, nv: 0 }] };
     }
     var addDays = function (ymd, n) { var q = parts(ymd), d = new Date(Date.UTC(q.y, q.m - 1, q.d + n)); return d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate()); };
     var last = addDays(demo.today, 60);
@@ -452,9 +638,19 @@
         if (p.act === 'cal_month') {
           var days = [], d = demo.today;
           while (d <= last) { var x = demo.days[d]; days.push({ date: d, n: x ? x.list.length : 0, p: 0 }); d = addDays(d, 1); }
-          return resolve({ ok: true, today: demo.today, last: last, paused: demo.paused, closed: demo.closed.slice(), days: days });
+          var yl = (demo.days[demo.yest] ? demo.days[demo.yest].list : []).filter(function (z) { return z.src === 'web'; });
+          return resolve({ ok: true, today: demo.today, last: last, paused: demo.paused, closed: demo.closed.slice(), days: days,
+            yest: { date: demo.yest, n: yl.length, pend: yl.filter(function (z) { return !z.vp && !z.nv; }).length }, hours: { first: 18, last: 25 }, max: MAX_PEOPLE, tables: [3, 2, 6], zones: { counter: 6, wall: 4 } });
         }
-        if (p.act === 'cal_day') return resolve({ ok: true, date: p.date, closed: demo.closed.indexOf(p.date) >= 0, list: day ? day.list.slice().sort(function (a, b) { return a.h - b.h; }) : [] });
+        if (p.act === 'cal_day') return resolve({ ok: true, date: p.date, closed: demo.closed.indexOf(p.date) >= 0, canVisit: p.date <= demo.today, list: day ? day.list.slice().sort(function (a, b) { return a.h - b.h; }) : [] });
+        if (p.act === 'cal_visit') {
+          var vb = null;
+          (day ? day.list : []).forEach(function (z) { if (z.no === p.no) vb = z; });
+          if (!vb) return resolve({ ok: false, reason: 'nf' });
+          if (vb.src !== 'web') return resolve({ ok: false, reason: 'bad' });
+          vb.vp = p.v === 'came' ? p.people : 0; vb.nv = p.v === 'no' ? 1 : 0;
+          return resolve({ ok: true, v: p.v === 'clear' ? '' : p.v, vp: vb.vp });
+        }
         if (p.act === 'cal_closed') {
           var i = demo.closed.indexOf(p.date);
           if (p.closed && i < 0) demo.closed.push(p.date);
@@ -469,9 +665,11 @@
         if (p.act === 'cal_add') {
           if (demo.closed.indexOf(p.date) >= 0 && !p.forceClosed) return resolve({ ok: false, reason: 'closed' });
           day = demo.days[p.date] = demo.days[p.date] || { n: 0, list: [] };
-          if (p.people > 8 && !p.forceFull) return resolve({ ok: false, reason: 'full' });
+          var un = p.units || [], dTb = [], dZn = [];
+          un.forEach(function (u) { if (u.charAt(0) === 't') dTb.push(parseInt(u.slice(1), 10)); else dZn.push(u); });
+          if (!un.length && p.people > 8 && !p.forceFull) return resolve({ ok: false, reason: 'full' });
           day.n++;
-          day.list.push({ no: day.n, h: p.h, name: p.name || '（名前なし）', tel: p.tel, people: p.people, seat: p.seat, type: p.type, src: p.src, ov: p.people > 8 ? 1 : 0, tb: [], note: p.note });
+          day.list.push({ no: day.n, h: p.h, name: p.name || '（名前なし）', tel: p.tel, people: p.people, seat: p.seat, type: p.type, src: p.src, ov: !un.length && p.people > 8 ? 1 : 0, cf: 0, tb: dTb, zn: dZn, note: p.note });
           return resolve({ ok: true, no: day.n });
         }
         resolve({ ok: false, reason: 'bad' });
