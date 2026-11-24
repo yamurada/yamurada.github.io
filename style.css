@@ -116,6 +116,34 @@ ul.menu b{color:var(--gold);font-weight:400;white-space:nowrap}
 .course-items{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;list-style:none;padding:0;margin:0 0 6px;counter-reset:c}
 .course-items li{border:1px solid #f0c75a66;padding:4px 12px;font-size:14px}
 
+/* ご予約（ネット予約） */
+.reserve-tel{margin:-6px 0 4px}
+.reserve-closed{margin:14px 0 0;padding:10px 14px;text-align:center;font-size:14px;background:#ffffff10;border:1px dashed #f0c75a88;color:var(--sub)}
+.reserve-closed b{color:var(--gold);font-weight:600}
+.reserve-form{display:grid;gap:16px;margin-top:20px}
+.reserve-form label{display:block;font-size:14px;color:var(--gold);letter-spacing:.08em;margin-bottom:4px}
+.reserve-row{display:grid;gap:16px}
+@media (min-width:520px){.reserve-row{grid-template-columns:1fr 1fr}}
+.reserve-form input,.reserve-form select,.reserve-form textarea{
+  width:100%;font:inherit;font-size:16px;line-height:1.5;color:var(--text);color-scheme:dark; /* 16pxにすると、iPhoneで入力中に画面が勝手に拡大されない */
+  background:#ffffff14;border:1px solid #f0c75a99;border-radius:0;padding:10px 12px;
+}
+.reserve-form textarea{resize:vertical;min-height:84px}
+.field-hint{margin:6px 0 0;font-size:12px;line-height:1.6;color:var(--sub)}
+.reserve-done h3:focus{outline:none}
+.reserve-form ::placeholder{color:#e3d3bf88}
+.reserve-form input:focus,.reserve-form select:focus,.reserve-form textarea:focus{outline:2px solid var(--gold);outline-offset:1px}
+.reserve-form .is-bad{border-color:#ff8a7a;background:#b3261e26}
+.hp-field{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden} /* 機械よけ。人の目には見えない */
+.reserve-error{margin:0;padding:10px 14px;background:#b3261e;color:#fff;font-size:14px}
+.reserve-error a{color:#fff;white-space:nowrap}
+.reserve-submit{width:100%;font:inherit;font-size:16px;cursor:pointer}
+.reserve-submit:disabled{opacity:.6;cursor:wait}
+.reserve-done{margin-top:20px;text-align:center}
+.reserve-done h3{margin:0 0 10px;color:var(--gold);font-size:18px;letter-spacing:.12em}
+.reserve-done .sum{display:inline-block;text-align:left;border:1px solid #f0c75a66;padding:12px 18px;margin:6px 0 14px}
+.reserve-done p{margin:8px 0}
+
 /* 写真 */
 .photos{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:14px}
 .photos img:first-child{grid-column:span 2;aspect-ratio:16/9}
@@ -172,7 +200,7 @@ ul.menu b{color:var(--gold);font-weight:400;white-space:nowrap}
 
 /* ---------- スマホの下のボタンの帯 ---------- */
 .bottom-bar{
-  position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(3,1fr);
+  position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-auto-flow:column;grid-auto-columns:1fr; /* ボタンの数に合わせて等分（予約を出さないときは3つ） */
   background:#15110ef2;border-top:1px solid var(--gold);padding-bottom:env(safe-area-inset-bottom);
 }
 .bottom-bar a{
@@ -201,3 +229,64 @@ ul.menu b{color:var(--gold);font-weight:400;white-space:nowrap}
   .board{padding:48px 44px 40px}
   .map{aspect-ratio:auto;height:380px}
 }
+
+
+/* ご予約：お席・ご利用の選び方、同意、人間確認、プライバシーポリシー */
+.reserve-form fieldset{border:0;margin:0;padding:0;min-width:0}
+.reserve-form legend{padding:0;font-size:14px;color:var(--gold);letter-spacing:.08em;margin-bottom:6px}
+.choice{display:flex;gap:10px;flex-wrap:wrap}
+.reserve-form .choice-item{position:relative;display:block;margin:0;flex:1 1 140px;color:var(--text);letter-spacing:.04em}
+.reserve-form .choice-item input{position:absolute;opacity:0;width:1px;height:1px}
+.choice-item span{display:block;text-align:center;font-size:16px;padding:10px 12px;border:1px solid #f0c75a99;background:#ffffff14;cursor:pointer}
+.choice-item input:checked + span{background:var(--gold);color:#15110e;font-weight:700}
+.choice-item input:focus-visible + span{outline:2px solid var(--gold);outline-offset:2px}
+.seat-choice{flex-direction:column}
+.seat-choice .choice-item{flex:1 1 auto}
+.seat-choice .choice-item span{text-align:left;padding:12px 14px}
+.choice-item small{display:block;margin-top:4px;font-size:12px;font-weight:400;line-height:1.5;opacity:.85;letter-spacing:.02em}
+.reserve-form select:disabled{opacity:.7}
+.consent{display:grid;gap:8px;padding:12px 14px;border:1px dashed #f0c75a88;background:#ffffff0c}
+.consent-text{margin:0;font-size:13px;line-height:1.8;color:var(--sub)}
+.consent-text a{color:var(--gold);white-space:nowrap}
+.reserve-form .consent-check{display:flex;align-items:center;gap:10px;margin:0;font-size:15px;color:var(--text);letter-spacing:.02em;cursor:pointer}
+.reserve-form .consent-check input{width:22px;height:22px;flex:none;accent-color:var(--gold);padding:0}
+.ts-box{min-height:20px}
+.privacy-body h3{margin:18px 0 4px;font-size:15px;color:var(--gold);letter-spacing:.08em}
+.privacy-body p{margin:4px 0;font-size:14px;line-height:1.9;color:var(--sub)}
+.privacy-body .pp-lead{color:var(--text)}
+.privacy-body .pp-date{margin-top:16px;font-size:12px;text-align:right}
+.site-footer a[data-privacy]{font-size:12px}
+
+/* プライバシーポリシーのページ（privacy.html） */
+.pp-title{margin:0 0 6px;text-align:center;color:var(--gold);font-weight:600;font-size:20px;letter-spacing:.2em;padding-bottom:10px;border-bottom:1px solid #f0c75a88}
+
+/* 予約欄の下の注意書きが、手描き枠の下の線と重ならないように、下に余白を足す（11/24） */
+#reserve .board{padding-bottom:64px}
+#reserveNote{margin:18px 12px 0;padding:14px 16px 16px;line-height:1.8}
+@media (max-width:519px){#reserve .board{padding-bottom:76px}}
+
+/* 11/24 スマホでの直し（本人のスマホ確認から） */
+/* ①背の高い板では、手描き枠の上の線が下に来る（線の位置は板の高さの約2.4%）ので、見出しを線より下に置く */
+#picks .board,#menu .board,#info .board{padding-top:72px}
+#reserve .board{padding-top:84px}
+/* ②日付の欄がiPhoneで枠からはみ出さないように（iPhoneの日付欄は、幅の指定を無視して、広がろうとする） */
+.reserve-form,.reserve-row{grid-template-columns:minmax(0,1fr)}
+@media (min-width:520px){.reserve-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.reserve-form>*,.reserve-row>*{min-width:0}
+.reserve-form input,.reserve-form select,.reserve-form textarea{max-width:100%;min-width:0;box-sizing:border-box}
+.reserve-form input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-height:48px}
+
+/* キャンセルの決まり・キャンセル確認ページ（11/24） */
+.cancel-policy{padding:12px 14px;border:1px solid #f0c75a66;background:#ffffff0c;text-align:left}
+.cancel-policy h4{margin:0 0 6px;font-size:14px;color:var(--gold);letter-spacing:.1em}
+.cancel-policy ul{margin:0;padding-left:1.2em}
+.cancel-policy li{margin:4px 0;font-size:13px;line-height:1.8;color:var(--text)}
+.reserve-done .cancel-policy{display:inline-block;margin:6px 0 14px;max-width:100%}
+.reserve-done .mail-ng{color:#ffb4a0}
+.cancel-card{margin-top:20px;text-align:center}
+.cancel-card .sum{display:inline-block;text-align:left;border:1px solid #f0c75a66;padding:12px 18px;margin:6px 0 14px;line-height:1.9}
+.cancel-card h2{margin:0 0 8px}
+.cancel-card p{margin:8px 0}
+.cancel-card .cancel-go{margin-top:6px}
+.cancel-card .cancel-go[disabled]{opacity:.6}
+.cancel-card .cancel-msg{font-size:15px;line-height:1.9}

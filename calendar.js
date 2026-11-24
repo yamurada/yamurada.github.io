@@ -34,8 +34,11 @@
     many: 'お休みの日が多すぎます。',
     nf: 'その予約は、すでに消えています。',
     nfvisit: '14時の掃除で、記録に入りました。画面からは直せません。直すときは、制作者に連絡してください。',
-    past: '過ぎた日の予約は、キャンセルできません。（来店の記録の元になるため）',
-    visited: '来店（か「来なかった」）を記録ずみの予約です。キャンセルするときは、先に「未入力に戻す」を押してください。',
+    past: '過ぎた日の予約は、キャンセル・訂正できません。（来店の記録の元になるため）',
+    visited: '来店（か「来なかった」）を記録ずみの予約です。キャンセル・訂正するときは、先に「未入力に戻す」を押してください。',
+    webdate: 'ネット予約の日付は、直せません。（お客さまのメールのURLに日付が入っているため）取り消して、入れ直してください。',
+    netedit: '通信できませんでした。直ったかもしれません。日の一覧（日付を移したときは、移した先の日も）で確かめてから、もう一度ためしてください。',
+    nfedit: 'その予約が、見つかりません。もう直っているかもしれません。日の一覧（日付を移したときは、移した先の日も）で確かめてください。',
     error: 'うまくいきませんでした。もう一度ためしてください。'
   };
 
@@ -280,6 +283,7 @@
       if (!r.ok) { if (r.reason === 'auth' || r.reason === 'owner' || r.reason === 'locked') return fatal(r.reason); toast(ERR[r.reason] || ERR.error, true); return; }
       state.dayData = r;
       renderDay();
+      return true;
     });
   }
 
@@ -382,6 +386,7 @@
       b.src === 'web' && state.dayData.canVisit ? visitBox(b) : null,
       // 昨日の営業日の予約は、キャンセルできない（来店の記録の元になるため）
       state.monthData && date < state.monthData.today ? null : el('div', { class: 'row' },
+        (b.src === 'web' && (b.vp || b.nv)) ? null : el('button', { class: 'plain', type: 'button', text: 'この予約を訂正する', onclick: function () { renderEdit(b); } }),
         el('button', { class: 'danger', type: 'button', text: 'この予約をキャンセルする', onclick: function () { cancelBooking(b); } }))
     ]);
     state.view = 'detail';
@@ -578,6 +583,101 @@
     });
   }
 
+  /* ---------- 予約の訂正（時間・人数・席・ご利用・名前・電話・ご要望。お客さまには、メールもLINEも出ない） ---------- */
+
+  function renderEdit(b) {
+    var date0 = state.date, isWeb = (b.src || 'web') === 'web', isMulti = b.seat === 'multi';
+    var form = el('form', { novalidate: 'novalidate' });
+    var hrs = state.monthData.hours || { first: FIRST_H, last: LAST_H }, stepH = hrs.step || 1;
+    var timeSel = el('select', { id: 'e-h' });
+    for (var h = hrs.first; h <= hrs.last + 1e-9; h += stepH) timeSel.appendChild(el('option', { value: String(h), text: hourLabel(h) }));
+    if (!timeSel.querySelector('option[value="' + b.h + '"]')) timeSel.appendChild(el('option', { value: String(b.h), text: hourLabel(b.h) }));
+    timeSel.value = String(b.h);
+    var maxes = state.monthData.max || MAX_PEOPLE;
+    var people = el('input', { type: 'number', id: 'e-people', inputmode: 'numeric', min: '1', max: String(isMulti ? maxes.multi : maxes.table), value: String(b.people) });
+    var dateIn = isWeb ? null : el('input', { type: 'date', id: 'e-date', required: 'required', value: date0, min: state.monthData.today, max: state.monthData.last });
+    var name = el('input', { type: 'text', id: 'e-name', maxlength: '30', autocomplete: 'off', value: b.name || '' });
+    var tel = el('input', { type: 'tel', id: 'e-tel', inputmode: 'tel', maxlength: '14', autocomplete: 'off', value: b.tel || '' });
+    var note = el('textarea', { id: 'e-note', maxlength: '200' });
+    note.value = b.note || '';
+    var counter = el('div', { class: 'count', text: note.value.length + ' / 200' });
+    note.addEventListener('input', function () { counter.textContent = note.value.length + ' / 200'; });
+    var err = el('div', { class: 'ferr', role: 'alert' });
+    var submit = el('button', { class: 'primary', type: 'submit', text: '直して保存する' });
+
+    form.appendChild(isWeb
+      ? el('div', { class: 'f' }, el('div', { class: 'lab', text: '日付' }), el('div', { text: dateLabel(date0) }), el('div', { class: 'hint', text: 'ネット予約の日付は、直せません。日付を変えるときは、取り消して、入れ直してください。' }))
+      : field('日付', dateIn, '今日から60日先まで。', 'e-date'));
+    form.appendChild(field('開始の時間', timeSel, '1回2時間で数えます。', 'e-h'));
+    form.appendChild(isMulti
+      ? el('div', { class: 'f' }, el('div', { class: 'lab', text: '席' }), el('div', { text: unitsOf(b).map(unitName).join('・') }), el('div', { class: 'hint', text: '席つなぎの予約は、席の組み合わせを直せません。変えるときは、取り消して、入れ直してください。' }))
+      : el('div', { class: 'f' }, el('div', { class: 'lab', text: '席' }), seg('seat', SEAT_PICK, b.seat)));
+    form.appendChild(field('人数', people, null, 'e-people'));
+    form.appendChild(el('div', { class: 'f' }, el('div', { class: 'lab', text: 'ご利用' }), seg('type', TYPE, b.type)));
+    form.appendChild(field('お名前', name, '空のままでもよいです。（「名前なし」で入ります）', 'e-name'));
+    form.appendChild(field('電話番号', tel, '空のままでもよいです。', 'e-tel'));
+    form.appendChild(el('div', { class: 'f' }, el('label', { for: 'e-note', text: 'ご要望・ご質問' }), note, counter));
+    form.appendChild(el('div', { class: 'hint', text: isWeb
+      ? 'お客さまには、メールもLINEも、自動では送られません。時間や人数を変えたときは、お電話でお伝えください。（お客さまのメールのURLは、そのまま使えます）'
+      : 'お客さまには、自動では何も送られません。' }));
+    form.appendChild(err);
+    form.appendChild(el('div', { class: 'row' }, el('button', { class: 'plain', type: 'button', text: 'やめる', onclick: renderDetail }), submit));
+
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      err.textContent = '';
+      var p = parseInt(people.value, 10), seatV = isMulti ? 'multi' : segValue(form, 'seat');
+      var telV = tel.value.replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 65248); }).replace(/[^0-9]/g, '');
+      if (dateIn && !dateIn.value) { err.textContent = '日付を入れてください。'; dateIn.focus(); return; }
+      var mx = maxes[seatV];
+      if (!(p >= 1 && p <= mx)) { err.textContent = SEAT[seatV] + 'は、1〜' + mx + '名で入れてください。'; people.focus(); return; }
+      if (telV && !/^0\d{9,10}$/.test(telV)) { err.textContent = ERR.tel; tel.focus(); return; }
+      var body = { date: date0, no: b.no, h: Number(timeSel.value), people: p, seat: seatV, type: segValue(form, 'type'), name: name.value, tel: telV, note: note.value };
+      if (dateIn && dateIn.value !== date0) body.newDate = dateIn.value;
+      submit.disabled = true;
+      sendEdit(body, err, submit);
+    });
+
+    show([el('button', { class: 'link back', type: 'button', text: '← やめて戻る', onclick: renderDetail }), el('h1', { text: '予約を訂正する' }), el('p', { class: 'hint', text: dateLabel(date0) + ' ' + hourLabel(b.h) + '　' + nameOf(b) + '　（番号' + b.no + '）' }), form]);
+    state.view = 'edit';
+  }
+
+  // 送る。「お休みの日」「満席」と返ってきたら、確かめてから、許可をつけて送り直す
+  function sendEdit(body, err, submit) {
+    setBusy(true);
+    api('cal_edit', body).then(function (r) {
+      setBusy(false);
+      if (r.ok) {
+        toast(r.date !== body.date ? '予約を直しました（日付を移したので、番号は ' + r.no + ' に変わりました）' : '予約を直しました（番号' + r.no + '）');
+        // 一覧を読み直せたときだけ、詳細へ進む（読めなかったときは、ちがう予約を出さない）
+        return openDay(r.date).then(function (ok) {
+          if (ok) { state.sel = r.no; if (findSel()) renderDetail(); }
+          else { state.date = body.date; toast('直しました。一覧を読み込めなかったので、「最新にする」を押して確かめてください。', true); }
+        });
+      }
+      var ask = r.reason === 'closed' ? 'closed' : r.reason === 'full' ? 'full' : r.reason === 'cap' ? 'cap' : '';
+      if (ask) {
+        var msg = ask === 'closed'
+          ? dateLabel(body.newDate || body.date) + 'は、お休みに設定してある日です。\nそれでも、この日に移しますか？'
+          : ask === 'cap'
+            ? 'つないだ席は ' + r.cap + '席ですが、人数は ' + body.people + '名です。\n席が足りませんが、それでも直しますか？'
+            : body.seat === 'multi'
+              ? 'この時間に、すでに使われている席が入っています。\nそれでも直しますか？（席が重なります）'
+              : '満席です。（その時間の席は、もう埋まっています）\nそれでも直しますか？\n（名前・電話だけ直すときも、この確認が出ます）';
+        confirmBox(msg, 'はい、直す', 'いいえ', false).then(function (yes) {
+          if (!yes) { submit.disabled = false; return; }
+          if (ask === 'closed') body.forceClosed = true; else if (ask === 'cap') body.forceCap = true; else body.forceFull = true;
+          sendEdit(body, err, submit);
+        });
+        return;
+      }
+      submit.disabled = false;
+      if (r.reason === 'auth' || r.reason === 'owner' || r.reason === 'locked') return fatal(r.reason);
+      if (r.reason === 'nf') { err.textContent = ERR.nfedit; return; }
+      err.textContent = r.reason === 'net' ? ERR.netedit : (ERR[r.reason] || ERR.error);
+    });
+  }
+
   /* ---------- 起動（LINEログイン → 本人確認 → 月の画面） ---------- */
 
   function start() {
@@ -661,6 +761,22 @@
           if (!day) return resolve({ ok: false, reason: 'nf' });
           for (var k = 0; k < day.list.length; k++) if (day.list[k].no === p.no) { day.list.splice(k, 1); return resolve({ ok: true }); }
           return resolve({ ok: false, reason: 'nf' });
+        }
+        if (p.act === 'cal_edit') {
+          var eb = null;
+          (day ? day.list : []).forEach(function (z) { if (z.no === p.no) eb = z; });
+          if (!eb) return resolve({ ok: false, reason: 'nf' });
+          if (p.newDate && eb.src === 'web') return resolve({ ok: false, reason: 'webdate' });
+          if (p.newDate && p.newDate !== p.date) {
+            day.list.splice(day.list.indexOf(eb), 1);
+            var nd = demo.days[p.newDate] = demo.days[p.newDate] || { n: 0, list: [] };
+            nd.n++; eb.no = nd.n; nd.list.push(eb);
+            eb.h = p.h; eb.people = p.people; eb.type = p.type; eb.name = p.name || '（名前なし）'; eb.tel = p.tel; eb.note = p.note;
+            return resolve({ ok: true, no: eb.no, date: p.newDate, over: 0 });
+          }
+          if (!p.forceFull && p.people > 8 && p.seat === 'table') return resolve({ ok: false, reason: 'full' });
+          eb.h = p.h; eb.people = p.people; eb.type = p.type; eb.name = p.name || '（名前なし）'; eb.tel = p.tel; eb.note = p.note; if (eb.seat !== 'multi') eb.seat = p.seat;
+          return resolve({ ok: true, no: eb.no, date: p.date, over: 0 });
         }
         if (p.act === 'cal_add') {
           if (demo.closed.indexOf(p.date) >= 0 && !p.forceClosed) return resolve({ ok: false, reason: 'closed' });

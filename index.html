@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1121c">
+<link rel="stylesheet" href="style.css?v=1124f">
 <script>document.documentElement.classList.add('js')</script>
 </head>
 <body>
@@ -26,6 +26,7 @@
     <a href="#picks">おすすめ</a>
     <a href="#menu">メニュー</a>
     <a href="#course">宴会</a>
+    <a href="#reserve">予約</a>
     <a href="#gallery">写真</a>
     <a href="#about">お店</a>
     <a href="#info">アクセス</a>
@@ -41,6 +42,7 @@
       <p class="hero-sub"><span class="ph" data-shop="access"></span>　<span class="ph" data-shop="hours"></span></p>
       <div class="hero-btns">
         <a class="btn" data-tel>電話する</a>
+        <a class="btn" href="#reserve" data-reserve>ネット予約</a>
         <a class="btn" href="#info"><span class="ph">営業時間・</span><span class="ph">アクセス</span></a>
       </div>
     </div>
@@ -66,6 +68,88 @@
 
   <section id="course" class="sec">
     <div class="board reveal" id="courseBox"></div>
+  </section>
+
+  <!-- ネット予約。shop-data.js の reserve.endpoint または turnstileSiteKey が空のあいだは、この部分ごと消えます -->
+  <section id="reserve" class="sec">
+    <div class="board reveal">
+      <h2>ご予約</h2>
+      <p class="lead"><span class="ph">ネット予約は</span><span class="ph">前日の23:59まで。</span><br><span class="ph">当日のご予約は</span><span class="ph">お電話でお願いします。</span></p>
+      <p class="more reserve-tel"><a class="btn" data-tel>電話する</a></p>
+      <p class="reserve-closed" id="reserveClosed" hidden></p>
+
+      <form id="reserveForm" class="reserve-form" novalidate hidden>
+        <div class="reserve-row">
+          <div>
+            <label for="rDate">ご来店の日</label>
+            <input id="rDate" type="date" required>
+            <p class="field-hint">夜中の0時〜4時にご来店の場合は、前の日をお選びください（例：土曜の深夜1時 → 金曜）。</p>
+          </div>
+          <div>
+            <label for="rPeople">人数</label>
+            <select id="rPeople" required></select>
+          </div>
+        </div>
+        <fieldset class="choice-set">
+          <legend>お席</legend>
+          <div class="choice seat-choice">
+            <label class="choice-item"><input type="radio" name="seat" value="counter" required><span>カウンター（厨房の前）<small>目の前が厨房。店主と話せる席です（1〜6名様）</small></span></label>
+            <label class="choice-item"><input type="radio" name="seat" value="wall" required><span>カウンター（壁向き）<small>入口近くの、前が壁の席です（1〜4名様）</small></span></label>
+            <label class="choice-item"><input type="radio" name="seat" value="table" required><span>テーブル席<small>3・2・6人がけを、つなげてお使いします（1〜11名様）</small></span></label>
+          </div>
+          <p class="field-hint">12名様以上のご予約は、お電話でお願いします。</p>
+        </fieldset>
+        <fieldset class="choice-set">
+          <legend>ご利用</legend>
+          <div class="choice">
+            <label class="choice-item"><input type="radio" name="type" value="seat" required><span>席のみ</span></label>
+            <label class="choice-item"><input type="radio" name="type" value="banquet" required><span>宴会</span></label>
+          </div>
+        </fieldset>
+        <div>
+          <label for="rTime">開始のお時間（2時間制）</label>
+          <select id="rTime" required disabled></select>
+          <p class="field-hint" id="rTimeHint" hidden></p>
+        </div>
+        <div class="reserve-row">
+          <div>
+            <label for="rName">お名前</label>
+            <input id="rName" type="text" autocomplete="name" maxlength="30" required>
+          </div>
+          <div>
+            <label for="rTel">お電話番号</label>
+            <input id="rTel" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="090-1234-5678" required>
+          </div>
+        </div>
+        <div>
+          <label for="rEmail">メールアドレス</label>
+          <input id="rEmail" type="email" inputmode="email" autocomplete="email" maxlength="100" placeholder="example@gmail.com" required>
+          <p class="field-hint">ご予約の確認と、キャンセル用のURLを、このアドレスにお送りします。届かないときは、迷惑メールのフォルダもご確認ください。</p>
+        </div>
+        <div>
+          <label for="rNote">ご要望・ご質問（なくてもOK）</label>
+          <textarea id="rNote" rows="3" maxlength="200" placeholder="アレルギー・お誕生日・お席のご希望・ご質問など"></textarea>
+          <p class="field-hint">ご質問へのお答えは、お店からお電話でお伝えします。お席のご希望は、お約束できないことがあります。クレジットカード番号やパスワードなどは、書かないでください。</p>
+        </div>
+        <div class="hp-field" aria-hidden="true">
+          <label>この欄は空のままにしてください<input id="rWebsite" type="text" tabindex="-1" autocomplete="off"></label>
+        </div>
+        <div class="cancel-policy" id="reservePolicy" hidden></div>
+        <div class="consent">
+          <p class="consent-text">いただいたお名前・お電話番号・メールアドレス・ご要望は、ご予約に関するご連絡のためだけに使います。ご要望に、アレルギーなど健康に関わることを書かれた場合も、お席・お料理のご対応のためだけに使います。<a href="privacy.html" target="_blank" rel="noopener">くわしくはプライバシーポリシー</a></p>
+          <label class="consent-check"><input id="rConsent" type="checkbox"><span>上の内容を読んで、同意します</span></label>
+        </div>
+        <div class="ts-box">
+          <div id="rTurnstile"></div>
+          <p class="field-hint">いたずら防止のため、入力を始めると「人間かどうかの確認」が表示されます（Cloudflare Turnstile）。</p>
+        </div>
+        <p class="reserve-error" id="reserveError" role="alert" hidden></p>
+        <button class="btn reserve-submit" id="reserveSubmit" type="submit">予約する</button>
+        <p class="note" id="reserveNote"></p>
+      </form>
+
+      <div class="reserve-done" id="reserveDone" role="status" hidden></div>
+    </div>
   </section>
 
   <section id="gallery" class="sec">
@@ -117,17 +201,19 @@
 <footer class="site-footer">
   <p class="footer-logo">YAMURADA</p>
   <p><a data-insta target="_blank" rel="noopener">Instagram</a></p>
+  <p><a href="privacy.html" data-privacy>プライバシーポリシー</a></p>
   <p class="copy">© <span id="year"></span> <span data-shop="name"></span></p>
 </footer>
 
 <!-- スマホの画面の下にずっと出るボタン -->
 <nav class="bottom-bar" aria-label="すぐ使うボタン">
   <a data-tel><span class="ico" aria-hidden="true">📞</span>電話</a>
+  <a href="#reserve" data-reserve><span class="ico" aria-hidden="true">📅</span>予約</a>
   <a data-map target="_blank" rel="noopener"><span class="ico" aria-hidden="true">📍</span>地図</a>
   <a data-insta target="_blank" rel="noopener"><span class="ico" aria-hidden="true">📷</span>Instagram</a>
 </nav>
 
-<script src="shop-data.js?v=1121c"></script>
-<script src="main.js?v=1121c"></script>
+<script src="shop-data.js?v=1124f"></script>
+<script src="main.js?v=1124f"></script>
 </body>
 </html>
